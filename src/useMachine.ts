@@ -18,6 +18,8 @@ export function useMachine<T>(machine: Machine<T>) {
 		[dispatch]
 	);
 
+	// const send = dispatch;
+
 	useEffect(() => {
 		return invoke?.({ send });
 	});
