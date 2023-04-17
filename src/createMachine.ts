@@ -1,4 +1,12 @@
-export interface EventObject {
+const clearActionQueueSymbol = Symbol();
+
+export function clearActionQueue() {
+	return {
+		type: clearActionQueueSymbol,
+	} as const;
+}
+
+interface EventObject {
 	type: string;
 }
 
@@ -10,12 +18,24 @@ type Invoker = ({
 	send: (event: EventObject) => void;
 }) => Disposal | undefined;
 
-export function assign(
-	fn: ({ context, event }: { context: any; event: EventObject }) => any
-) {
+type Action = ({ context, event }: { context: any; event: EventObject }) => any;
+
+interface ActionWrapper {
+	type: "action" | "assign";
+	action: Action;
+}
+
+export function action(fn: Action) {
+	return {
+		type: "action",
+		action: fn,
+	} as const;
+}
+
+export function assign(fn: Action) {
 	return {
 		type: "assign",
-		assignment: fn,
+		action: fn,
 	} as const;
 }
 
@@ -28,7 +48,7 @@ interface StateMachineConfig<T> {
 			on?: {
 				[key: string]: {
 					target?: string;
-					actions?: ReturnType<typeof assign>;
+					actions?: ActionWrapper[];
 				};
 			};
 		};
@@ -40,37 +60,63 @@ interface StateObject<T> {
 	context: T;
 }
 
+interface CurrentState<T> {
+	state: StateObject<T>;
+	actionQueue: Array<() => void>;
+	invoker?: Invoker;
+}
+
 export interface Machine<T> {
 	transition: (
-		[currentState]: [StateObject<T>, Invoker | undefined],
-		event: EventObject
-	) => [StateObject<T>, Invoker | undefined];
-	initialState: [StateObject<T>, Invoker | undefined];
+		value: CurrentState<T>,
+		event: EventObject | ReturnType<typeof clearActionQueue>
+	) => CurrentState<T>;
+	initialState: CurrentState<T>;
 }
 
 export function createMachine<T>(config: StateMachineConfig<T>): Machine<T> {
 	return {
-		transition: ([currentState], event) => {
-			const stateConfig = config.states[currentState.value];
-			const transition = stateConfig.on?.[event.type];
-			const nextStateValue = transition?.target ?? currentState.value;
-			const nextStateConfig = config.states[nextStateValue];
-			const nextContext =
-				transition?.actions?.type === "assign"
-					? transition?.actions?.assignment({
-							context: currentState.context,
-							event,
-					  })
-					: currentState.context;
+		transition: (currentState, event) => {
+			if (event.type === clearActionQueueSymbol) {
+				return {
+					state: currentState.state,
+					actionQueue: [],
+					invoker: currentState.invoker,
+				};
+			}
 
-			return [
-				{ value: nextStateValue, context: nextContext },
-				nextStateConfig.invoke,
-			];
+			const stateConfig = config.states[currentState.state.value];
+			const transition = stateConfig.on?.[event.type];
+			const nextStateValue = transition?.target ?? currentState.state.value;
+			const nextStateConfig = config.states[nextStateValue];
+			const nextActionQueue: Array<() => void> = [...currentState.actionQueue];
+			let context = currentState.state.context;
+
+			if (transition?.actions) {
+				for (const actionWrapper of transition.actions) {
+					if (actionWrapper.type === "assign") {
+						context = actionWrapper.action({
+							context,
+							event,
+						});
+					} else {
+						nextActionQueue.push(() =>
+							actionWrapper.action({ context, event })
+						);
+					}
+				}
+			}
+
+			return {
+				state: { value: nextStateValue, context },
+				actionQueue: nextActionQueue,
+				invoker: nextStateConfig.invoke,
+			};
 		},
-		initialState: [
-			{ value: config.initial, context: config.context },
-			config.states[config.initial].invoke,
-		],
+		initialState: {
+			state: { value: config.initial, context: config.context },
+			actionQueue: [],
+			invoker: config.states[config.initial].invoke,
+		},
 	};
 }

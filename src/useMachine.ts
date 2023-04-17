@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useReducer, useTransition } from "react";
-import type { EventObject, Machine } from "./createMachine";
+import { clearActionQueue } from "./createMachine";
+import type { Machine } from "./createMachine";
 
 export function useMachine<T>(machine: Machine<T>) {
-	const [[state, invoke], dispatch] = useReducer(
+	const [{ state, actionQueue, invoker }, dispatch] = useReducer(
 		machine.transition,
 		machine.initialState
 	);
@@ -10,7 +11,7 @@ export function useMachine<T>(machine: Machine<T>) {
 	const [isPending, startTransition] = useTransition();
 
 	const send = useCallback(
-		(event: EventObject) => {
+		(event: Parameters<typeof dispatch>[0]) => {
 			startTransition(() => {
 				dispatch(event);
 			});
@@ -18,10 +19,15 @@ export function useMachine<T>(machine: Machine<T>) {
 		[dispatch]
 	);
 
-	// const send = dispatch;
+	useEffect(() => {
+		if (actionQueue.length) {
+			actionQueue.forEach((action) => action());
+			send(clearActionQueue());
+		}
+	}, [actionQueue]);
 
 	useEffect(() => {
-		return invoke?.({ send });
+		return invoker?.({ send });
 	});
 
 	return { state, send, isPending } as const;

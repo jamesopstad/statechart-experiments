@@ -1,5 +1,5 @@
 import { useState, useTransition } from "react";
-import { assign, createMachine } from "./createMachine";
+import { action, assign, createMachine } from "./createMachine";
 import { useMachine } from "./useMachine";
 import { SlowComponent } from "./SlowComponent";
 
@@ -13,10 +13,12 @@ const timerMachine = createMachine({
 			on: {
 				start: { target: "active" },
 				reset: {
-					actions: assign(({ context }) => ({
-						...context,
-						count: 0,
-					})),
+					actions: [
+						assign(({ context }) => ({
+							...context,
+							count: 0,
+						})),
+					],
 				},
 			},
 		},
@@ -33,10 +35,17 @@ const timerMachine = createMachine({
 			on: {
 				stop: { target: "inactive" },
 				tick: {
-					actions: assign(({ context }) => ({
-						...context,
-						count: context.count + 1,
-					})),
+					actions: [
+						assign(({ context }) => ({
+							...context,
+							count: context.count + 1,
+						})),
+						action(({ context, event }) =>
+							console.log(
+								`Received event '${event.type}'. Set count to ${context.count}.`
+							)
+						),
+					],
 				},
 			},
 		},
