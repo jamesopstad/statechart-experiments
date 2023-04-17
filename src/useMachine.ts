@@ -24,11 +24,11 @@ export function useMachine<T>(machine: Machine<T>) {
 			actionQueue.forEach((action) => action());
 			send(clearActionQueue());
 		}
-	}, [actionQueue]);
+	}, [actionQueue, send]);
 
 	useEffect(() => {
 		return invoker?.({ send });
-	});
+	}, [invoker]);
 
 	return { state, send, isPending } as const;
 }
